@@ -1,0 +1,347 @@
+#install packages
+install.packages("mice")
+install.packages("ggplot2")
+install.packages("naniar")
+install.packages("modelsummary")
+install.packages("readxl")
+install.packages("dpylr")
+install.packages("expss")
+install.packages("pastecs")
+install.packages("tidyverse")
+install.packages("pollster")
+install.packages("survey")
+install.packages("plm")
+install.packages("ggthemes")
+install.packages("outliers")
+install.packages("corrplot")
+install.packages("xtable")
+install.packages("stargazer")
+install.packages("vtable")
+#load packages
+library(naniar)
+library(mice)
+library(ggplot2)
+library(readxl)
+library(modelsummary)
+library(tidyverse)
+library(dplyr)
+library(expss)
+library(pastecs)
+library(pollster)
+library(survey)
+library(plm)
+library(ggthemes)
+library(outliers)
+library(corrplot)
+library(xtable)
+library(stargazer)
+library(vtable)
+#import main data set (College Enrollment)
+CEnroll2016 <- read_excel("C:/Users/linds/Downloads/College Enrollment 2016.xlsx",skip = 2)
+CEnroll2015 <- read_excel("C:/Users/linds/Downloads/College Enrollment 2015.xlsx",skip = 2)
+CEnroll2017 <- read_excel("C:/Users/linds/Downloads/College Enrollment 2017.xlsx",skip = 2)
+CEnroll2018 <- read_excel("C:/Users/linds/Downloads/College Enrollment 2018.xlsx",skip = 2)
+
+## Number of Observations by year
+nrow(CEnroll2015)
+nrow(CEnroll2016)
+nrow(CEnroll2017)
+nrow(CEnroll2018)
+  ##totals to 2532 observations in total
+
+#check actual school amount each year
+table(CEnroll2015$`School Name`== "All Schools")
+## 188 "All schools in County value" while there are 440 Actual High Schools listed in Year 2015
+table(CEnroll2016$`School Name`== "All Schools")
+##187 "All schools in County value" while there are 439 Actual High Schools listed in Year 2016
+table(CEnroll2017$`School Name`== "All Schools")
+## 191 "All schools in County value" while there are 443 Actual High Schools listed in Year 2017
+table(CEnroll2018$`School Name`== "All Schools")
+## 191 "All schools in County value" while there are 453 Actual High Schools listed in Year 2018
+
+#check missing variables each year & "TFS" value (TFS will convert to missing after numeric transformation)
+table(is.na(CEnroll2015))
+table(is.na(CEnroll2016))
+table(is.na(CEnroll2017))
+table(is.na(CEnroll2018))
+table(CEnroll2015=="TFS")
+table(CEnroll2016=="TFS")
+table(CEnroll2017=="TFS")
+table(CEnroll2018=="TFS")
+    ### alot of "TFS" for race variables
+
+#check outliers with combined years
+outlierCEnroll<-rbind(CEnroll2015,CEnroll2016,CEnroll2017,CEnroll2018)
+outlierCEnroll<-outlierCEnroll%>% mutate_at(c(6:33), as.numeric)
+outlierCEnroll<-rename(outlierCEnroll,"grad1" ="Total High School Graduates...6","collenroll"= "Number of High School Graduates Enrolled in Postsecondary Institution...7")
+omit<-filter(outlierCEnroll,!is.na(grad1),!is.na(collenroll))
+omit<-select(omit,grad1,collenroll)
+   ## check all NAs gone & plot variables of interest for potential outliers
+table(is.na(omit))
+outlier(omit)
+ggplot(data = omit) + 
+  geom_point(mapping = aes(x = grad1, y = collenroll)) 
+### check potential outliers again with aggregate county values removed
+omit2<-outlierCEnroll
+omit2<-filter(omit2,!is.na(grad1),!is.na(collenroll))
+omit2<-select(omit2, 'School Name', grad1, collenroll)
+omit2<-filter(omit2, !omit2$`School Name` == "All Schools")
+ ## filter out aggregate
+ggplot(data = omit2) + 
+  geom_point(mapping = aes(x = grad1, y = collenroll)) 
+outlier(omit2$grad1)
+outlier(omit2$collenroll)
+
+## see descriptive statistics across all years
+options(scipen=100)
+stat.desc(omit2)
+
+## rough check on missings by column since now numeric conversion
+miss<-miss_var_summary(outlierCEnroll)
+    ## smaller size race variables missings significant
+
+################################ Getting Analytic Data Set Note: Start with main data set first, merge later to only include balanced schools
+
+#combine/Join all 4 years of data 
+CEnroll<-rbind(CEnroll2015,CEnroll2016,CEnroll2017, CEnroll2018)
+
+### filter out aggregate school amounts (only want individual schools)
+CEnroll<-filter(CEnroll,CEnroll$'School Name' != "All Schools")
+
+
+## Rename some description variables & total variables
+CEnroll<-rename(CEnroll,"Year"= "School Year","CountyCode"="School District Code","County"="School District Name","SchoolCode"="School Code","School"="School Name", "TotGrads"= "Total High School Graduates...6","TotCEnroll"="Number of High School Graduates Enrolled in Postsecondary Institution...7")
+## Rename sex variables
+CEnroll<-rename(CEnroll, "MGrads"= "Total High School Graduates...8","FGrads"= "Total High School Graduates...10","MCEnroll"= "Number of High School Graduates Enrolled in Postsecondary Institution...9","FCEnroll"= "Number of High School Graduates Enrolled in Postsecondary Institution...11" )
+## Rename White variables
+CEnroll<-rename(CEnroll, "WhiteGrads"= "Total High School Graduates...30","WhiteCEnroll"= "Number of High School Graduates Enrolled in Postsecondary Institution...31")
+## Rename Free Reduced Lunch Variable
+CEnroll<-rename(CEnroll, "FRLGrads"= "Total High School Graduates...12","FRLCEnroll"= "Number of High School Graduates Enrolled in Postsecondary Institution...13")
+## Rename rest of variables
+CEnroll<-rename(CEnroll, "MigrantGraduates"= "Total High School Graduates...14","MigrantCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...15","LEDGraduates"= "Total High School Graduates...16","LEDCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...17","DisabilityGraduates"= "Total High School Graduates...18","DisabilityCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...19",
+                    "HispanicGraduates"= "Total High School Graduates...20","HispanicCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...21","TwoGraduates"= "Total High School Graduates...22","TwoCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...23","AmerIndGraduates"= "Total High School Graduates...24","AmerIndCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...25","NativeGraduates"= "Total High School Graduates...26","NativeCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...27","AsianGraduates"= "Total High School Graduates...28","AsianCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...29",
+                    "BlackGraduates"= "Total High School Graduates...28","BlackCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...29","PacificGraduates"= "Total High School Graduates...32","PacificCollEnrollment"= "Number of High School Graduates Enrolled in Postsecondary Institution...33")
+## convert variables to numeric
+CEnroll<-CEnroll%>% mutate_at(c(6:33), as.numeric) 
+
+#### Checks missings to decide which race variables to drop, code orders percentages by highest
+miss2<-miss_var_summary(CEnroll)
+
+## only keep complementary variables( coll graduates & future coll enrollment) with less than 29% missing
+CEnroll<-select(CEnroll,-c(14:27,32,33))
+  ## Free reduced lunches, Whites, Blacks, and Sexes left 
+
+##Correct School Code character count  (helps with future merge cause differing entry for school code)
+CEnroll$SchoolCode<- ifelse(str_count(CEnroll$SchoolCode) < 4,paste0("0",CEnroll$SchoolCode),CEnroll$SchoolCode)
+table(str_count(CEnroll$SchoolCode))
+  ### All 4 Characters 
+table(str_count(CEnroll$CountyCode))
+  ### County has mostly 3 characters, the 7 characters are standard in future merger data sets
+
+### Make panel balanced
+CEnroll$ID<-paste(CEnroll$SchoolCode,CEnroll$CountyCode)
+table(str_count(CEnroll$ID))
+  ##checks if adds up to previous character counts
+CEnroll<-transform(CEnroll,
+                       IDgroup=as.numeric(factor(ID)))
+CEnroll$constant = 1
+CEnroll<- within(CEnroll, {school_ct = ave(constant,IDgroup, FUN=sum)}) 
+CEnroll<- filter(CEnroll, CEnroll$school_ct ==4)
+table(CEnroll$school_ct)
+  ## all schools included now are present all years
+
+## check how many missing again with selected schools
+miss3<-miss_var_summary(CEnroll)
+  ## percentages of missings for all included variables are smaller
+
+
+########## Import other datasets (12 in total (3 for each year of observation))
+
+#####Hope data sets to give hope eligible information
+Hope2016 <- read.csv("C:/Users/linds/Downloads/Hope Eligible 2016.csv")
+Hope2017 <- read.csv("C:/Users/linds/Downloads/Hope Eligible 2017.csv")
+Hope2018 <- read.csv("C:/Users/linds/Downloads/Hope Eligible 2018.csv")
+Hope2015 <- read.csv("C:/Users/linds/Downloads/Hope Eligible 2015.csv")
+## combine all years
+Hope<-rbind(Hope2015,Hope2016,Hope2017,Hope2018)
+##rename variables
+Hope<-rename(Hope, "Year" = "LONG_SCHOOL_YEAR", "CountyCode" = "SCHOOL_DISTRCT_CD", "County"="SCHOOL_DSTRCT_NM","SchoolCode"="INSTN_NUMBER","School"="INSTN_NAME","Graduates"="NUMBER_OF_GRADUATES","HopeEligible"= "HOPE_ELIGIBLE","HopeEligible%"="HOPE_ELIGIBLE_PCT")
+## fix year variable to match
+Hope$Year<-ifelse(Hope$Year == "2014-15", '2015',Hope$Year)
+Hope$Year<-ifelse(Hope$Year == "2015-16", '2016',Hope$Year)
+Hope$Year<-ifelse(Hope$Year == "2016-17", '2017',Hope$Year)
+Hope$Year<-ifelse(Hope$Year == "2017-18", '2018',Hope$Year)
+## make school code and county code format match others
+table(str_count(Hope$SchoolCode))
+table(str_count(Hope$CountyCode))
+Hope$SchoolCode<- ifelse(str_count(Hope$SchoolCode) < 4,paste0("0",Hope$SchoolCode),Hope$SchoolCode)
+table(str_count(Hope$SchoolCode))
+  ## matches now
+## convert hope eligible variable to numeric
+Hope$HopeEligible<-as.numeric(Hope$HopeEligible)
+
+######Certification data sets to give certification percentage per school
+Cert2016 <- read.csv("C:/Users/linds/Downloads/Certification 2016.csv")
+Cert2017 <- read_excel("C:/Users/linds/Downloads/Certification 2017.xls", skip=1)
+Cert2018 <- read_excel("C:/Users/linds/Downloads/Certification 2018.xls",skip=1)
+Cert2015 <- read.csv("C:/Users/linds/Downloads/Certification 2015.csv")
+### make columns amount match by dropping column sys_sch
+Cert2017<-subset(Cert2017,select=-c(sys_sch))
+Cert2018<-subset(Cert2018,select=-c(sys_sch))
+## combine all years
+Cert<-rbind(Cert2015,Cert2016,Cert2017,Cert2018)
+## rename Cert columns
+Cert<-rename(Cert,"Year"="FISCAL_YEAR","CountyCode"="SYSTEM_ID","County"="SYSTEM_NAME","SchoolCode"="SCHOOL_ID","School"="SCHOOL_NAME","Cert%"="direct_cert_perc")
+## make SchoolCode and County Code match character format of others
+Cert<-Cert%>%mutate_at(c('SchoolCode','CountyCode'),as.character)
+## School code and county code character count match others
+table(str_count(Cert$SchoolCode))
+table(str_count(Cert$CountyCode))
+Cert$SchoolCode<- ifelse(str_count(Cert$SchoolCode) < 4,paste0("0",Cert$SchoolCode),Cert$SchoolCode)
+table(str_count(Cert$SchoolCode))
+  ##matches now
+
+########School Enrollment data to have enrollment for 12th by school
+SEnrollment2016 <- read.csv("C:/Users/linds/Downloads/Enrollment 2016.csv")
+SEnrollment2015 <- read.csv("C:/Users/linds/Downloads/Enrollment 2015.csv")
+SEnrollment2017 <- read.csv("C:/Users/linds/Downloads/Enrollment 2017.csv")
+SEnrollment2018 <- read.csv("C:/Users/linds/Downloads/Enrollment 2018.csv")
+##Combine years & Rename variables
+SEnroll<-rbind(SEnrollment2015,SEnrollment2016,SEnrollment2017,SEnrollment2018)
+SEnroll<-rename(SEnroll,"Year"= "LONG_SCHOOL_YEAR", "County"= "SCHOOL_DSTRCT_NM","SchoolCode"="INSTN_NUMBER", "School"="INSTN_NAME", "GradesServed" ="GRADES_SERVED_DESC", "CountyCode" = "SCHOOL_DSTRCT_CD", "EnrollmentPeriod"= "ENROLLMENT_PERIOD", "GradeEnrollment"= "ENROLLMENT_COUNT", "GradesLevel"="GRADE_LEVEL", "Unit"="DETAIL_LVL_DESC")
+## fix year variable to match
+SEnroll$Year<-ifelse(SEnroll$Year == "2014-15", '2015',SEnroll$Year)
+SEnroll$Year<-ifelse(SEnroll$Year == "2015-16", '2016',SEnroll$Year)
+SEnroll$Year<-ifelse(SEnroll$Year == "2016-17", '2017',SEnroll$Year)
+SEnroll$Year<-ifelse(SEnroll$Year == "2017-18", '2018',SEnroll$Year)
+## make school code and county code charcter count match others
+table(str_count(SEnroll$SchoolCode))
+table(str_count(SEnroll$CountyCode))
+SEnroll$SchoolCode<- ifelse(str_count(SEnroll$SchoolCode) < 4,paste0("0",SEnroll$SchoolCode),SEnroll$SchoolCode)
+table(str_count(SEnroll$SchoolCode))
+##### IMPORTANT FILTER OUT GRADEs LEVEL NOT 12TH, non traditional highschools (9th, 10th, 11th, 12th), & spring enrollment count (only want fall for begining count)
+SEnroll<-filter(SEnroll,GradesLevel == "12th",GradesServed =="09,10,11,12", EnrollmentPeriod == "Fall" )
+
+
+
+############### merge all data sets together one by one by original with important identification columns
+complete<- merge(CEnroll,Hope,by = c("Year","School","County","CountyCode","SchoolCode"))
+complete2<- merge(complete,Cert,by = c("Year","School","County","CountyCode","SchoolCode"))
+complete3<- merge(complete2,SEnroll,by = c("Year","School","County","CountyCode","SchoolCode"))
+  ## notice "%" in var names got replaced to "."
+### check if balanced after merge
+table(complete3$Year)
+  ##not balanced
+### Make panel balanced
+complete3$ID2<-paste(complete3$SchoolCode,complete3$CountyCode)
+complete3<-transform(complete3,
+                   IDgroup2=as.numeric(factor(ID2)))
+complete3$constant2 = 1
+complete3<- within(complete3, {school_ct2 = ave(constant2,IDgroup2, FUN=sum)}) 
+complete3<- filter(complete3, complete3$school_ct2 ==4)
+table(complete3$school_ct2)
+table(complete3$Year)
+  ## balanced 328 schools every year
+### new data set with repeated or unnesary columns removed
+complete4<-select(complete3,-c(18:22,26:29,33:34))
+
+### checks missings by columns again
+miss4<-miss_var_summary(complete4)
+
+
+####### imputations
+###since "TFS" which was converted to blanks is equal 0-9 
+median(0:9)
+ ## replace NAs with 5 since median is 4.5
+      ## however replace
+### imputate data set
+complete5<-complete4
+complete5[is.na(complete5)] = 5
+miss5<-miss_var_summary(complete5)
+  ## no missings anymore
+## check if any variables have values bigger than totgrads(should be highest value in row)
+complete5<- mutate(complete5,count = (ifelse(complete5[c(7:18)] > complete5$TotGrads,1,0)))
+table(complete5$count == 1)
+  ##none
+
+###### create variables
+## higher number of white students
+complete5$Highwhites<-ifelse(complete5$WhiteGrads > .5*complete5$TotGrads,1,0)
+### create dummy varibale to indicate if more than half of graduates received Free Reduced lunches
+complete5$HighFRL<-ifelse(complete5$FRLGrads > .5*complete5$TotGrads,1,0)
+### Create variable for % of College Enrollment to Total Graduates
+complete5<-mutate(complete5, Collenroll_per= (TotCEnroll/TotGrads)*100)
+ ## 2 decimal places for CollEnrollmentper
+complete5$Collenroll_per<-round(complete5$Collenroll_per,2)
+### Create variable for % of total high school graduates to beginning school enrollment
+complete5<-mutate(complete5, Totgrads_per= (TotGrads/GradeEnrollment)*100)
+## 2 decimal places for CollEnrollmentper
+complete5$Totgrads_per<-round(complete5$Totgrads_per,2)
+##create variable for high Hope Eligible percent
+complete5$HighHOPE<-ifelse(complete5$HopeEligible. > 50,1,0)
+complete5$HighHOPE<-round(complete5$HighHOPE,2)
+## create variable for high certification percent
+complete5$HighCert<-ifelse(complete5$Cert. > 50,1,0)
+complete5$HighCert<-round(complete5$HighCert,2)
+##create variable for comparable base for average Enrollment percent for all years & limit to 2 decimal places
+complete5$Cenrollbase_per<- mean(complete5$Collenroll_per,na.rm=T)
+complete5$Cenrollbase_per<-round(complete5$Cenrollbase_per,2)
+## create dummy variable for if school is at or below average Enrollment percent across all years
+complete5$Cenrollbase_meets<-ifelse(complete5$Collenroll_per >= complete5$Cenrollbase_per,1,0)
+##create final datasets with variables of interest (subroups dropped because of too much imputation)
+final<-select(complete5,c(1:7,25:32,23))
+
+
+########################## Analysis
+
+## check correlation for total graduates and total college enrollment
+cor(final$TotGrads,final$TotCEnroll)
+## plot relationship with captions and titles
+ggplot(data = final) + 
+  geom_point(mapping = aes(x = TotGrads, y = TotCEnroll)) +
+  labs(caption = "The correlation coefficient  = 0.962", title = "Total Graduates on Total Enrollment (2015-2018)", y= "Total College Enrollment",x ="Total Graduates")
+  theme_minimal()
+
+## check correlation between college enrollment percent and High Hope eligibility
+cor(final$Collenroll_per,final$HighHOPE)
+## plot relationship with captions and titles
+ggplot(data = final) + 
+  geom_point(mapping = aes(x = factor(HighHOPE), y = Collenroll_per)) +
+  labs(caption = "The correlation coefficient  = 0.545", title = "HOPE Eligibility on Total Enrollment(2015-2018)", y= "College Enrollment %",x ="High HOPE Eligiblity")
+  theme_minimal()
+##create line grapgh of average college enrollment percent by years
+# 2015
+mean2015 <- mean(select(filter(final,Year == 2015),Collenroll_per))
+# 2016
+mean2016 <- mean(select(filter(final,Year == 2016),Collenroll_per))
+# 2017
+mean2017 <- mean(select(filter(final,Year == 2017),Collenroll_per))
+# 2018
+mean2018<- mean(select(filter(final,Year == 2018),Collenroll_per))
+# table for each average by year
+mean_Collenroll_per <- data.frame(year=c(2015, 2016, 2017, 2018),
+                                  Collenroll_per=c(mean2015, mean2016, mean2017, mean2018))
+## plot the line grapgh 
+ggplot(data = mean_Collenroll_per) +
+  geom_line(aes(x=year,y=Collenroll_per))+
+  labs(caption= "College Enrollment = % of Total College Enrollment/Total High School Graduates",title = "Average College Enrollment % by Year", y = "Average College Enrollment %" , x = "Year") +
+  theme_minimal()
+
+##descriptive statistics
+sumtable<-st(final)
+
+### fixed affects regression model with no controls
+model1 <- plm::plm(Collenroll_per ~ HighHOPE + as.factor(Year),index = "IDgroup2", model = "within", data = final)
+summary(model1)
+### fixed effects model with control added
+model2 <- plm::plm(Collenroll_per ~ HighHOPE + Highwhites + HighCert + HighFRL + Cenrollbase_meets + as.factor(Year),index = "IDgroup2", model = "within", data = final)
+summary(model2)
+
+### create regression output table
+models = (list("Naive" = model1, "Controls"= model2))
+modelsummary(models, stars = TRUE,fmt =4)
+
+###count schools that were at or above Enrollper_meets
+table(final$Cenrollbase_meets)
+# less than 50% of schools passed
+#48.63 % meet
